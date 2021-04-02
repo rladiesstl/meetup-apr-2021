@@ -6,8 +6,8 @@ About R-Ladies St. Louis Intro slides:
 
 Materials for the workshop in this repo:
 
-Data: rladies.demand.history.xlsx
-Slides: Introduction-to-Time-Series.html
-RMardown document: intro-to-time-series.Rmd
+Data: rladies.demand.history.xlsx  
+Slides: Introduction-to-Time-Series.html  
+RMardown document: intro-to-time-series.Rmd  
 
 
