@@ -2,9 +2,9 @@
 
 ### Introduction to Time Series in R with Laura Rose
 
-About R-Ladies St. Louis Intro slides: 
+About R-Ladies St. Louis Intro slides: https://rladiesstl.github.io/meetup-apr-2021/
 
-Materials for the workshop in this repo:
+Materials for the workshop in this repo include:
 - Data: rladies.demand.history.xlsx  
 - Slides: Introduction-to-Time-Series.html  
 - RMardown document: intro-to-time-series.Rmd  
