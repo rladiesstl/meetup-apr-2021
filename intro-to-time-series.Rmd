@@ -1,0 +1,414 @@
+---
+title: "Introduction to Time Series in R"
+author: "Laura Rose"
+date: "4/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.height=5, fig.width=9.64)
+
+```
+```{r data, include=FALSE}
+library(feasts)
+library(fable)
+library(tsibble)
+library(tidyverse)
+library(readxl)
+library(here)
+```
+
+## A note before we begin…
+- Much of the info in this presentation is based on Rob Hyndman’s book *Forecasting: Principles and Practice, 3rd ed.*, which is accessible for free online.
+- The R package `fpp3` is a companion package to the book and includes the relevant datasets.
+- Dr. Hyndman’s [website](https://robjhyndman.com/) also has a lot of good resources which explore in more depth the topics in his book.
+
+## What is a Time Series?
+
+- Examples (US monthly GDP, quarterly sales of a product)
+- Data measured over a period of time; usually regular intervals (such as month or quarter), but sometimes irregular intervals
+
+## Time Series Uses for Data Analysis
+
+- Main use of time series in data analysis is forecasting. 
+- Based on the historical time series, we estimate a model and its corresponding parameters.
+- The model specification is used to forecast future values. 
+- Thus, the further into the future the forecast is for a given time period, the more uncertainty there will be, since previous values used to forecast the given time period are forecasts themselves.
+
+## Forecasting: Types and Uses
+
+- Forecasting is frequently needed in business and government, and forecasts may be short-term, medium-term, or long-term. 
+- Short-term forecasts might be used for production scheduling or customer demand in the next several months.
+- Medium-term forecasts might be used to procure raw materials for customer demand of finished goods.
+- Long-term forecasts might be used for capacity planning (i.e., is it a profitable decision to increase capacity at a plant, etc.).
+
+## Forecasting: Typical Process Flow
+
+1. Define the problem
+2. Collect info, which includes data and organizational expertise (i.e., talk to any individuals in the organization who may have an understanding of explanatory variables, structural changes in data, etc.)
+3. Exploratory analysis/data visualization
+4. Model choice and estimation
+5. Evaluate model performance and adjust model/data as needed.
+
+## How to Think of a Forecast
+
+- What we are forecasting is a random variable which could take a range of values. 
+- Essentially, our forecast is a point forecast, and is generally the mean (or sometimes median) of the distribution.
+- For this reason, a point forecast often is reported with a 95% prediction interval, which gives the range of values for which there is a 95% confidence level that the actual value will be included.
+- Note that we need to use good judgement in interpreting the confidence interval, since sometimes values will be included in the confidence interval which are impossible (e.g., negative forecasted future sales).
+- In my experience in business forecasting (CPG and pharmaceuticals), little attention is paid to confidence intervals, but it is important to be aware of their use.
+
+## About the Data
+
+- The data we will examine today is real data from my company, with SKU numbers anonymized.
+- There are four SKUs. Three of the SKUs are acetaminophen products, and the 06 SKU is an ADHD product.
+- The ADHD product is divided into series based on customer group demand.
+
+## Forecasting: Time Series Patterns
+
+- Trend: long-term increase or decrease in data, which may or may not be linear
+- Seasonality: changes in data that occur at fixed frequencies, such as time of year or day of week
+- Cycles: data increases and decreases that are not of fixed frequency, such as a business cycle
+- A time series may have none or all three of these patterns.
+- The data we will examine today will include series with trend and seasonality, but not cyclic patterns.
+
+## Forecasting: R Packages
+
+- The best packages for use in time series forecasting are Rob Hyndman's `tidyverts` collection of packages.
+- These include `tsibble`, `feasts`, and `fable`.
+- You will also want to load the `tidyverse` packages for data manipulation, since the `tidyverts` packages are compatible with the `tidyverse` verbs.
+- Note that as of early 2021, you will need to install and load each package individually, unlike the `tidyverse`.
+
+## Forecasting: R Packages, continued
+
+- The first package we will use in our time series analysis is the `tsibble` package.
+- This is commonly used to turn our data into a useable form for time series forecasting.
+- The word `tsibble` denotes a `tibble` structure (tidy data, data.frame, etc.), with the time series aspect added. 
+- `Tsibbles` behave much like `tibbles`, with a few exceptions that will be demonstrated.
+
+## Forecasting: Importing Data into R
+```{r import, warning=FALSE}
+here::here()
+rladies.demand.history <- read_excel("rladies.demand.history.xlsx") # save in same folder as Markdown file
+rladies.demand.history$RSFMTH <- yearmonth(rladies.demand.history$RSFMTH) # convert the character time variable to a yearmonth type
+rladies.demand.history
+```
+See code in R Markdown document.
+
+## Forecasting: Attributes of a Tsibble
+- To create a tsibble from a data frame, we must specify index and key (if necessary).
+- In our tsibble, the RSFMTH column is the index (time variable), and the other columns except RSFQTY are the keys.
+- The keys indicate how many models/forecasts need to be estimated/calculated. For example, if we had a tsibble with 2 keys, one of which had 3 unique items, and each of those 3 items in the first key had 3 items in the second key, we would have 9 models.
+- In our case, we have 4 SKUs, 3 of which have one customer demand group, and 1 of which has 5 customer demand groups, so we will have 8 models if we forecast at the lowest level. 
+
+## Forecasting: Converting to Tsibble
+```{r tsibble-convert}
+rladies.demand.tsibble <- as_tsibble(rladies.demand.history, key = c(RSSBU, RSFAM, RSSFAM, RSLITM, RSDGRP), index = RSFMTH)
+rladies.demand.tsibble
+```
+See code in R Markdown document.
+
+## Forecasting: Cleaning up the Tsibble
+- The data contains data over a longer time span than we want to use for this analysis, so we will use the `filter_index()` function. 
+- This allows us to filter the index based on a start date and/or an end date.
+- Note that as of early 2021, the start and end dates must be passed as character strings.
+
+## Forecasting: filter_index()
+```{r filter-index}
+rladies.demand.tsibble <- rladies.demand.tsibble %>% filter_index("2018 Jan" ~ "2021 Jan")
+rladies.demand.tsibble
+```
+See code in R Markdown document.
+
+## Forecasting: Other ways to use filter_index()
+```{r filter-index2}
+# just get 2020 data; this doesn't work for yearmonth type so must convert to Date
+rladies.demand.tsibble %>% mutate(RSFMTH = as.Date(RSFMTH)) %>% filter_index("2020")
+
+```
+See code in R Markdown document.
+
+## A note about the tidyverse verbs and tsibbles...
+
+- Most of the `tidyverse` verbs (`select`, `mutate`, `filter`) work on tsibbles as expected.
+- The exception is the `group_by` and `summarize` verbs. 
+- When applying these verbs, the index will remain.
+- See code in R Markdown document.
+```{r tidyverse}
+rladies.demand.tsibble %>% filter(RSLITM == '06') %>% group_by(RSLITM) %>% 
+  summarize(RSFQTY = sum(RSFQTY))
+```
+
+## Forecasting: Missing Values in Tsibbles
+
+- Sometimes the data that we import will not have a row for a 0 value.
+- In this case, it is important to fill in the gaps so the time series is continuous.
+- Luckily, the `tidyverts` has a function for this: `fill_gaps()`.
+- Gaps can be filled either to the end of the series or to the beginning or both.
+- In this case, we want to specify to fill gaps to the end, since not all items have history that starts at the same time. However, we may have gaps at the end if we have had 0 demand in the past month(s).
+- See code in R Markdown document.
+```{r fill_gaps}
+has_gaps(rladies.demand.tsibble)
+```
+```{r fill_gaps2}
+rladies.demand.tsibble <- rladies.demand.tsibble %>% fill_gaps(RSFQTY = 0L, .full = end())
+has_gaps(rladies.demand.tsibble)
+```
+
+## Forecasting: Data Visualization
+
+- It's a good idea to plot the data, whether we are doing automatic forecasting or specifying the model estimation ourselves. 
+- This allows for seeing trend, seasonality, and cyclical patterns (if applicable).
+- Data visualization also allows for easy outlier detection. 
+- Outlier detection and replacement is especially important for automatic forecasting, since we are not controlling model specification.
+
+## Forecasting: Line Plots & Trend
+
+```{r time-plot, include=TRUE}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% autoplot(RSFQTY) + labs(title = "SKU 89")
+```
+
+## Forecasting: Line Plots & Seasonality 
+```{r time-plot2, include=TRUE}
+rladies.demand.tsibble %>% filter(RSLITM == '06') %>% group_by(RSLITM) %>% summarize(RSFQTY = sum(RSFQTY)) %>% autoplot(RSFQTY) + labs(title = "SKU 06")
+```
+
+## Forecasting: Seasonal Plots
+```{r seasonal-series, include=TRUE, warning=FALSE}
+rladies.demand.tsibble %>% filter(RSLITM == '06') %>% group_by(RSLITM) %>% summarize(RSFQTY = sum(RSFQTY)) %>% gg_season(RSFQTY) + labs(title = 'SKU 06')
+```
+
+## Forecasting: More Seasonal Plots
+```{r seasonal-subseries, include=TRUE, warning=FALSE}
+rladies.demand.tsibble %>% filter(RSLITM == '06') %>% group_by(RSLITM) %>% summarize(RSFQTY = sum(RSFQTY)) %>% gg_subseries(RSFQTY) + labs(title = "SKU 06")
+```
+
+## Forecasting: Decomposition of a Time Series
+
+```{r decomposition, include=TRUE}
+rladies.demand.tsibble %>% filter(RSLITM == '37') %>% model(STL(RSFQTY ~ trend() + season(window = 'periodic'), robust = TRUE)) %>% components %>% autoplot() + labs(title = "SKU 37")
+```
+
+## Forecasting: Understanding a Decomposition
+
+- The `season` parameter is set to 'periodic' to force seasonality to be the same across years. 
+- `trend` default is `window=21` for monthly data.
+- For more info, see documentation on `STL()` function in `feasts` package.
+
+## Forecasting: Simple Methods
+- There are several simple, intuitive forecasting methods that can be used on their own or are often used as a benchmark for more complex forecasting methods.
+- These include a `MEAN()` forecast, a `NAIVE()` forecast, a `SNAIVE()` forecast for seasonal data, and a `RW()` forecast with/without drift parameter to account for trend.
+
+## Forecasting: Mean Forecast
+```{r mean, include=TRUE, warning=FALSE}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(MEAN(RSFQTY ~ window(size = 6))) %>% forecast(h = "1 year") %>% autoplot(rladies.demand.tsibble, level = NULL) + labs(title = "SKU 89")
+```
+
+## Forecasting: Naive Forecast
+```{r naive, include=TRUE}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(NAIVE(RSFQTY)) %>% forecast(h = "1 year") %>% autoplot(rladies.demand.tsibble, level = NULL) + labs(title = "SKU 89")
+```
+
+## Forecasting: Seasonal Naive Forecast
+```{r snaive, include=TRUE}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(SNAIVE(RSFQTY)) %>% forecast(h = "1 year") %>% autoplot(rladies.demand.tsibble, level = NULL) + labs(title = "SKU 89")
+```
+
+## Forecasting: Fitted Values
+
+- Every observation in a time series can be forecast using previous observations. 
+- These are called fitted values, but they are technically not true forecasts since the parameters used to forecast them were estimated from all observations.
+- This is commonly denoted as $\hat{y}_{t|t-1}$ or simply $\hat{y}_t$.
+
+## Forecasting: Residuals
+
+- Residuals are what remains after fitting a model. 
+- In mathematical terms, $e_{t} = y_{t}-\hat{y}_{t}$.
+- The goal in time series modeling is to have the residuals not contain any info that is not specified in the model.
+- In other words, the residuals are a white noise series.
+- To obtain the fitted values and residuals from a model object, use the `augment()` function. 
+- See code in R Markdown document.
+```{r augment}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(NAIVE(RSFQTY)) %>% augment()
+```
+
+## Forecasting: Residuals and White Noise
+
+- There are various methods available to test whether the residuals from a model are white noise.
+- The `feasts` package has a convenient function, `gg_tsresiduals()`, which plots the residuals across time, an autocorrelation function (ACF) plot, and a histogram of the residuals. 
+- It's also advisable to do a *portmanteau test* to test for autocorrelation, such as the Box-Pierce or preferrably the Ljung-Box test.
+- The null hypothesis is that the data is white noise, so a p-value < 0.05 implies the series is not white noise.
+- See code in R Markdown document
+```{r gg_tsresiduals, warning=FALSE}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(NAIVE(RSFQTY)) %>% gg_tsresiduals() + labs(title = "SKU 89")
+```
+```{r ljung-box}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(NAIVE(RSFQTY)) %>% augment() %>%  features(.resid, ljung_box)
+```
+## Forecasting: Exponential Smoothing Models
+
+- These are a family of models which are based on weighted averages of past observations, and the weight decays exponentially for less recent observations.
+- There are many exponential smoothing models, and these are summarized in [Chapter 8](https://otexts.com/fpp3/estimation-and-model-selection.html) of Dr. Hyndman's book.
+- The **simple exponential smoothing** (SES) model, suitable for data with no trend or seasonality, can be thought of as being between the extremes of a naive model (which relies on solely the last observation) and a mean model (which gives equal weight to all observations).
+
+## Forecasting: Exponential Smoothing Models, cont.
+
+- The equation form of the SES model is: $\hat{y}_{T+1|T} = \alpha y_T + (1-\alpha) \hat{y}_{T|T-1}$.
+- $\alpha$ is the smoothing parameter, where $0 \le \alpha \le 1$.
+- The higher the value of $\alpha$, the more weight is given to recent observations.
+- The sum of the weights ($\alpha$ or $(1-\alpha)$) is approximately equal to 1.
+- The parameters are estimated by minimizing the sum of squared errors (SSE) or by maximizing the likelihood that the data we observe arose from the specified model. Likelihood estimation is the default for the `ETS()` function.
+
+## Forecasting: Exponential Smoothing in R
+
+- The `ETS()` function is used to estimate exponential smoothing models in R. 
+- The function allows for the user to specify the parameters or for automatic specification by the algorithm.
+- See function documentation for more details.
+
+## Forecasting: ETS Example
+
+- The easiest way to use the `ETS()` function is to let the algorithm select the "best" specification.
+- The default selection is for the model to be selected based on minimization of the corrected Akaike Information Criterion (AICc).
+- This has the added benefit of removing any bias the forecaster may have (e.g., assuming random fluctuations are indications of trend or seasonality).
+- See code in R Markdown document.
+```{r ets}
+rladies.demand.tsibble %>% filter(RSLITM == '06') %>% group_by(RSLITM) %>% summarize(RSFQTY = sum(RSFQTY)) %>% model(ets = ETS(RSFQTY)) %>% report() %>% gg_tsresiduals() + labs(title = "SKU 06")
+```
+```{r resid-diag}
+rladies.demand.tsibble %>% filter(RSLITM == '06') %>% group_by(RSLITM) %>% summarize(RSFQTY = sum(RSFQTY)) %>% model(ets = ETS(RSFQTY)) %>% augment() %>% features(.resid, ljung_box)
+```
+
+## Forecasting: ETS Example with Modifications
+
+- If you want to specify a model with a specific error, trend, or seasonal parameter, use one of the specials inside the `ETS()` function.
+- See code in R Markdown document.
+```{r ets2}
+rladies.demand.tsibble %>% filter(RSLITM == '06') %>% group_by(RSLITM) %>% summarize(RSFQTY = sum(RSFQTY)) %>% model(ets = ETS(RSFQTY ~ season("A"))) %>% report() %>% gg_tsresiduals() + labs(title = "SKU 06")
+```
+
+## Forecasting: ETS Example with Modifications, cont.
+
+- You can use all, none, or only one of the specials. 
+- If you use a special, the algorithm will still consider more than one model that has the specification.
+- You can also specify more than one option to be considered in a special.
+- See code in R Markdown document.
+```{r ets3}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(ets = ETS(RSFQTY ~ trend(c("A" ,"Ad")))) %>% report() %>% gg_tsresiduals() + labs(title = "SKU 89")
+```
+```{r ets4}
+rladies.demand.tsibble %>% filter(RSLITM == '89') %>% model(ets = ETS(RSFQTY ~ trend(c("A" ,"Ad")))) %>% augment() %>% features(.resid, ljung_box) 
+```
+## Forecasting: Forecast Accuracy
+
+- Although white-noise residuals are important, the ultimate test of how well a model does is how it performs on data that it hasn't seen before.
+- The residuals are not a great judge of accuracy, since a model may overfit the data.
+- An overfitted model tends to perform significantly worse on new data.
+
+## Forecasting: Training and Test Data
+
+- The simplest way to test your model is to withhold the last 20% of observations from your data set as a test data set. 
+- Note that these will not be used to estimate parameters.
+- In our data, the last observation is January 2021, and we have 37 observations. 
+- We will withhold July 2020-January 2021.
+- See code in R Markdown document.
+```{r train-data}
+train.data <- rladies.demand.tsibble %>% filter_index(. ~ "2020 Jun")
+train.data
+```
+```{r test-forecast}
+train.data %>% model(ets = ETS(RSFQTY)) %>% forecast(h = "7 months") %>% accuracy(rladies.demand.tsibble)
+```
+
+## Forecasting: What the Accuracy Measures Mean
+
+- The `accuracy()` function returns point accuracy measures by default.
+- There are also interval and distribution accuracy measures.
+- In forecasting context, an error is defined as $e_{T+h} = y_{T+h} - \hat{y}_{T+h|T}$, where T is the last value of the time series, and h is the forecast horizon (how many periods in the future we are forecasting). The goal is for the forecast errors to be as close to zero as possible.
+
+## Forecasting: Point Accuracy Measures
+
+- The point accuracy measures include:
+  - $\text{Mean Error (ME)} = mean(e_{t})$. 
+  - $\text{Mean Absolute Error (MAE)} = mean(|e_{t}|)$. 
+  - $\text{Root Mean Square Error (RMSE)} = \sqrt{mean(e_{t}^2)}$
+- A forecast method that minimizes the MAE yields forecasts of the median, whereas a forecast method that minimizes RMSE yields forecasts of the mean. 
+- For this reason, the RMSE is generally preferable to MAE, although it is less intuitive.
+
+## Forecasting: Percentage Point Accuracy Measures
+
+- A percentage error is defined as $p_{t} = 100 * e_{t}/y_{t}$, where $e_{t} = y_{t} - \hat{y}_{t}$. Essentially, it's the error/demand for a given time period.
+- The advantage of percentage errors is that it is easy to compare between data sets, since they are unit-independent.
+- However, the percentage error won't be useful if there are 0s in the data since division by 0 is undefined.
+- The `accuracy()` function gives the following percentage accuracy measures:
+  - $\text{Mean Percentage Error (MPE)} = mean(p_{t})$.
+  - $\text{Mean Absolute Percentage Error (MAPE)} = mean(|p_{t}|)$.
+  
+## Forecasting: Scaled Error Measure
+
+- The easiest-to-use metric from the `accuracy()` function is Mean Absolute Scaled Error (MASE), a metric which Dr. Hyndman and collaborator(s) created. 
+- This measures how accurate the forecasts are from a given method relative to a one-step ahead naive forecast (or seasonal naive forecast for seasonal methods). 
+- Thus, a value less than 1 indicates that the model produces forecasts that are at least better than a naive method. 
+- The lower the MASE, the better the forecasts.
+- $q_{j} = \frac{\displaystyle e_{j}}{\displaystyle\frac{1}{T-1}\sum_{t=2}^T |y_{t}-y_{t-1}|}$
+- $MASE = mean(|q_{j}|)$, where $q_{j}$ is the scaled error.
+
+## Forecasting: Forecast Accuracy Considerations
+
+- The `accuracy()` function gives many different measures which have varying usefulness. 
+- Root Mean Square Error (RMSE) is useful for comparing the accuracy between models, but it's not particularly intuitive as a data point. 
+- Mean Absolute Scaled Error (MASE) shows how much better the model in question performed relative to a one-step-ahead naive forecast.
+- The *Inf* value indicates that there are 0s in the data. 
+
+## Forecasting: Time Series Cross-Validation
+
+ - Cross-validation is a more sophisticated, but more computationally-intensive way to evaluate forecast accuracy.
+ - Essentially, you stretch the tsibble into multiple datasets of increasing size, which are used to estimate models and forecast. These are compared to the dataset actual values.
+ - See [this graphic](https://otexts.com/fpp3/tscv.html) for a good visualization of the process.
+ - See code in R Markdown document
+```{r stretch-tsibble}
+rladies.stretch <- rladies.demand.tsibble %>% stretch_tsibble(.init = 6)
+```
+```{r cross-val}
+rladies.stretch %>% model(ETS(RSFQTY)) %>% forecast(h = 1) %>% accuracy(rladies.demand.tsibble)
+```
+
+## Forecasting: Automatic Forecasting
+
+- If you have a large number of SKUs, automatic forecasting is a good idea.
+- The `tidyverts` is designed to handle this easily, and we've already looked at how to do this.
+- See code in R Markdown document.
+```{r automatic}
+rladies.demand.model <- rladies.demand.tsibble %>% model(ets = ETS(RSFQTY))
+rladies.demand.model %>% tidy()
+```
+```{r forecast}
+rladies.demand.model %>% forecast(h = "1 year")
+```
+
+## Forecasting: Weighted MAPE
+
+- A metric that is commonly used to evaluate forecast accuracy is weighted MAPE (WMAPE).
+- WMAPE is useful because it is easily scalable across many SKUs and time periods.
+- $WMAPE = \sum_{i=1}^h |e_{T+i}|/\sum_{i=1}^h y_{T+i}$, for a given SKU's forecast over time period horizon *h*.
+- In English, WMAPE is the sum of the absolute forecast errors divided by the sum of the demand for the time period in consideration.
+- In a multi-SKU, multi-time-period context, this allows for SKUs/time periods with more volume to have greater weight in the overall forecast accuracy measure than smaller volume SKUs. It also overcomes the problem of division by zero for periods/SKUs that are equal to zero.
+- Thus, it is particularly useful in manufacturing and retail contexts.
+
+## Forecasting: A Simple Shiny App
+
+- This app is a simpler version of some other apps I have built to allow the user the interactively forecast using the `ETS()` function. 
+- In the app, I used accuracy measures based on the Training data (fitted values), since cross-validation takes too long to calculate.
+
+# Questions?
+
+
+
+
+
+
+
+
+
+
+
+
