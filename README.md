@@ -9,4 +9,13 @@ Materials for the workshop in this repo:
 - Slides: Introduction-to-Time-Series.html  
 - RMardown document: intro-to-time-series.Rmd  
 
+R packages to install:
+
+  + feasts
+  + fable
+  + tsibble
+  + tidyverse
+  + readxl
+  + here
+
 
