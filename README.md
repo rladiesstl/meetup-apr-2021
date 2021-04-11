@@ -11,7 +11,7 @@ Materials for the workshop in this repo include:
 
 ### Preparing for the Workshop
 
-- Download the Data and R-Markdown document by clicking the green "Code" button and choosing "Download ZIP" -- you will get the files you need (and some you don't need, which you can delete)
+- Download the Data and R-Markdown document by clicking the green "Code" button on the top right of this repository and choosing "Download ZIP" -- you will get the files you need (and some you don't need, which you can delete)
 
 - Install the R packages: 
 
