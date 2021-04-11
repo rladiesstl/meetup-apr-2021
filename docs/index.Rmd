@@ -55,7 +55,7 @@ knitr::include_graphics("https://pbs.twimg.com/media/EPlDKUQUcAEq5pw?format=jpg&
 
   - Jenine Harris (Washington University)  
     
-  - Mary Painter (Univeristy of Missouri)  
+  - Mary Painter (University of Missouri)  
     
   - Shelly Cooper (Washington University)  
     
