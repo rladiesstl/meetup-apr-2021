@@ -7,9 +7,13 @@ About R-Ladies St. Louis Intro slides: https://rladiesstl.github.io/meetup-apr-2
 Materials for the workshop in this repo include:
 - Data: rladies.demand.history.xlsx  
 - Slides: https://rladiesstl.github.io/meetup-apr-2021/Introduction-to-Time-Series.html
-- RMardown document: intro-to-time-series.Rmd  
+- R-Markdown document: intro-to-time-series.Rmd  
 
-R packages to install:
+### Preparing for the Workshop
+
+- Download the Data and R-Markdown document by clicking the green "Code" button and choosing "Download ZIP" -- you will get the files you need (and some you don't need, which you can delete)
+
+- Install the R packages: 
 
   + feasts
   + fable
